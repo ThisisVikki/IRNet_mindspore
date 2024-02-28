@@ -1,12 +1,15 @@
 import collections as c
-import torch.nn as nn
+import mindspore
+from mindspore import nn
+from mindspore import ops
+# import torch.nn as nn
 
-import torch
-import torch.nn.functional as F
+# import torch
+# import torch.nn.functional as F
 
 
 
-class CCALayer1(nn.Module):
+class CCALayer1(nn.Cell):
     def __init__(self, channel, reduction=16):
         super(CCALayer1, self).__init__()
 
@@ -77,7 +80,7 @@ def conv_block(in_nc, out_nc, kernel_size, stride=1, dilation=1, groups=1, bias=
 
 
 def mean_channels(inp):
-    torch._assert(inp.dim() == 4, 'dim4') # assert(inp.dim() == 4)
+    assert inp.shape[0] == 4, 'dim4' # assert(inp.dim() == 4)
     # assert not torch.any(torch.isnan(inp)) 因为可视化把这行去掉了
     spatial_sum = inp.sum(3, keepdim=True).sum(2, keepdim=True)
     return spatial_sum / (inp.size(2) * inp.size(3))
@@ -121,7 +124,6 @@ class CCALayer_ksize(nn.Module):
 
     def forward(self, x):
         y = self.act(self.conv3_1(x))
-        #y = self.conv3_1(x)
         return y
 
 
@@ -141,7 +143,6 @@ class CCALayer_ksizeReLU(nn.Module):
 
     def forward(self, x):
         y = self.act(self.conv3_1(x))
-        #y = self.conv3_1(x)
         return y
 
 def activation(act_type, inplace=True, neg_slope=0.05, n_prelu=1):
@@ -192,11 +193,11 @@ class ESA(nn.Module):
     def forward(self, x):
         c1_ = (self.conv1(x))
         c1 = self.conv2(c1_)
-        v_max = F.max_pool2d(c1, kernel_size=7, stride=3)
+        v_max = ops.max_pool2d(c1, kernel_size=7, stride=3)
         v_range = self.relu(self.conv_max(v_max))
         c3 = self.relu(self.conv3(v_range))
         c3 = self.conv3_(c3)
-        c3 = F.interpolate(c3, (x.size(2), x.size(3)), mode='bilinear', align_corners=False) 
+        c3 = ops.interpolate(c3, (x.size(2), x.size(3)), mode='bilinear', align_corners=False) 
         cf = self.conv_f(c1_)
         c4 = self.conv4(c3+cf)
         m = self.sigmoid(c4)
@@ -212,30 +213,22 @@ class IRB_minus(nn.Module):
         self.lastc = int(self.rc - self.dc)
         self.distill_1 = CCALayer_ksize(self.rc,self.dc, 3)
         self.mid_1 = conv_layer(self.dc, self.rc,3)
-        #self.distills = []
-        #self.mids = []
+
         self.distill_2 = conv_layer(self.rc, self.lastc, 1)
-        #setattr(self, 'distill_{}'.format(str(fdrbs)), distill)
-        self.conv = conv_layer (in_channels, in_channels, 1)
-        #self.c4_d = conv_layer(self.remaining_channels, 16, 1)
-        #self.c5 = conv_layer(in_channels, in_channels, 1)
+
+        self.conv = conv_layer(in_channels, in_channels, 1)
+
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
-        #self.distil_1 = CCALayer(in_channels)
-        #self.distil_2 = CCALayer(in_channels)
-        #self.distil_3 = CCALayer(in_channels)
-        #self.mid1 = conv_layer(16, 64, 3)
-        #self.mid2 = conv_layer(16, 64, 3)
-        #self.mid3 = conv_layer(16, 64, 3)
+
     def forward(self, input):
         F_in = input
         dist1 = self.distill_1(input)  # F1
         mid1 = self.mid_1(dist1)  # conv3
         rem1 = input - mid1
         
-        # dist2 = self.act(self.distill_2(rem1))
         dist2 = self.distill_2(rem1)
-        out = torch.cat([dist1, dist2], dim = 1)  # concate
+        out = ops.cat([dist1, dist2], dim = 1)  # concate
 
         out_fused = self.esa(self.conv(out))  # conv1+CCAlayer
         output = F_in + out_fused
@@ -251,30 +244,22 @@ class IRB_F1(nn.Module):
         self.lastc = int(self.rc - self.dc)
         self.distill_1 = CCALayer_ksize(self.rc,self.dc, 3)
         self.mid_1 = conv_layer(self.dc, self.rc,3)
-        #self.distills = []
-        #self.mids = []
+
         self.distill_2 = conv_layer(self.rc, self.lastc, 1)
-        #setattr(self, 'distill_{}'.format(str(fdrbs)), distill)
+
         self.conv = conv_layer (in_channels+self.dc, in_channels, 1)
-        #self.c4_d = conv_layer(self.remaining_channels, 16, 1)
-        #self.c5 = conv_layer(in_channels, in_channels, 1)
+
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
-        #self.distil_1 = CCALayer(in_channels)
-        #self.distil_2 = CCALayer(in_channels)
-        #self.distil_3 = CCALayer(in_channels)
-        #self.mid1 = conv_layer(16, 64, 3)
-        #self.mid2 = conv_layer(16, 64, 3)
-        #self.mid3 = conv_layer(16, 64, 3)
+        
     def forward(self, input):
         F_in = input
         dist1 = self.distill_1(input)  # conv3+leaky relu
         mid1 = self.mid_1(dist1)
         rem1 = input + mid1  # add
         
-        # dist2 = self.act(self.distill_2(rem1))
         dist2 = self.distill_2(rem1)  # conv1
-        out = torch.cat([mid1, dist2], dim = 1)
+        out = ops.cat([mid1, dist2], dim = 1)
 
         out_fused = self.esa(self.conv(out))
         output = F_in + out_fused
@@ -290,30 +275,21 @@ class IRB_noF1(nn.Module):
         self.lastc = int(self.rc - self.dc)
         self.distill_1 = CCALayer_ksize(self.rc,self.dc, 3)
         self.mid_1 = conv_layer(self.dc, self.rc,3)
-        #self.distills = []
-        #self.mids = []
+        
         self.distill_2 = conv_layer(self.rc, self.lastc, 1)
-        #setattr(self, 'distill_{}'.format(str(fdrbs)), distill)
+        
         self.conv = conv_layer (self.rc-self.dc, in_channels, 1)
-        #self.c4_d = conv_layer(self.remaining_channels, 16, 1)
-        #self.c5 = conv_layer(in_channels, in_channels, 1)
+        
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
-        #self.distil_1 = CCALayer(in_channels)
-        #self.distil_2 = CCALayer(in_channels)
-        #self.distil_3 = CCALayer(in_channels)
-        #self.mid1 = conv_layer(16, 64, 3)
-        #self.mid2 = conv_layer(16, 64, 3)
-        #self.mid3 = conv_layer(16, 64, 3)
+        
     def forward(self, input):
         F_in = input
         dist1 = self.distill_1(input)  # conv3+leaky relu
         mid1 = self.mid_1(dist1)  # conv3
         rem1 = input + mid1  # add
         
-        # dist2 = self.act(self.distill_2(rem1))
         dist2 = self.distill_2(rem1)  # conv1
-        # out = torch.cat([mid1, dist2], dim = 1)
 
         out_fused = self.esa(self.conv(dist2))
         output = F_in + out_fused
@@ -329,30 +305,20 @@ class IRB_noConv1(nn.Module):
         self.lastc = int(self.rc - self.dc)
         self.distill_1 = CCALayer_ksize(self.rc,self.dc, 3)
         self.mid_1 = conv_layer(self.dc, self.rc,3)
-        #self.distills = []
-        #self.mids = []
+
         self.distill_2 = conv_layer(self.rc, self.lastc, 1)
-        #setattr(self, 'distill_{}'.format(str(fdrbs)), distill)
+
         self.conv = conv_layer (in_channels + self.dc, in_channels, 1)
-        #self.c4_d = conv_layer(self.remaining_channels, 16, 1)
-        #self.c5 = conv_layer(in_channels, in_channels, 1)
+
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
-        #self.distil_1 = CCALayer(in_channels)
-        #self.distil_2 = CCALayer(in_channels)
-        #self.distil_3 = CCALayer(in_channels)
-        #self.mid1 = conv_layer(16, 64, 3)
-        #self.mid2 = conv_layer(16, 64, 3)
-        #self.mid3 = conv_layer(16, 64, 3)
     def forward(self, input):
         F_in = input
         dist1 = self.distill_1(input)
         mid1 = self.mid_1(dist1)
         rem1 = input + mid1
         
-        # dist2 = self.act(self.distill_2(rem1)) # 去掉激活
-        # dist2 = self.distill_2(rem1) # 去掉Conv1
-        out = torch.cat([dist1, rem1], dim = 1)
+        out = ops.cat([dist1, rem1], dim = 1)
 
         out_fused = self.esa(self.conv(out))
         output = F_in + out_fused
@@ -368,71 +334,23 @@ class IRB_F0(nn.Module):
         self.lastc = int(self.rc - self.dc)
         self.distill_1 = CCALayer_ksize(self.rc,self.dc, 3)
         self.mid_1 = conv_layer(self.dc, self.rc,3)
-        #self.distills = []
-        #self.mids = []
+
         self.distill_2 = conv_layer(self.rc, self.lastc, 1)
-        #setattr(self, 'distill_{}'.format(str(fdrbs)), distill)
+        
         self.conv = conv_layer (in_channels+self.dc, in_channels, 1)
-        #self.c4_d = conv_layer(self.remaining_channels, 16, 1)
-        #self.c5 = conv_layer(in_channels, in_channels, 1)
+
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
-        #self.distil_1 = CCALayer(in_channels)
-        #self.distil_2 = CCALayer(in_channels)
-        #self.distil_3 = CCALayer(in_channels)
-        #self.mid1 = conv_layer(16, 64, 3)
-        #self.mid2 = conv_layer(16, 64, 3)
-        #self.mid3 = conv_layer(16, 64, 3)
     def forward(self, input):
         F_in = input
         dist1 = self.distill_1(input)  # conv3+leaky relu
         mid1 = self.mid_1(dist1)
         rem1 = input + mid1  # add
         
-        # dist2 = self.act(self.distill_2(rem1))
         dist2 = self.distill_2(rem1)  # conv1
-        out = torch.cat([input, dist2], dim = 1)  # F1 to F0
+        out = ops.cat([input, dist2], dim = 1)  # F1 to F0
 
         out_fused = self.esa(self.conv(out))
-        output = F_in + out_fused
-        return output
-
-# no second Conv1
-class IRB_no2Conv1(nn.Module):
-    def __init__(self, in_channels):
-        super(IRB_no2Conv1, self).__init__()
-        self.rc = self.remaining_channels = in_channels
-        self.dc =int(in_channels // 2)
-        self.lastc = int(self.rc - self.dc)
-        self.distill_1 = CCALayer_ksize(self.rc,self.dc, 3)
-        self.mid_1 = conv_layer(self.dc, self.rc,3)
-        #self.distills = []
-        #self.mids = []
-        self.distill_2 = conv_layer(self.rc, self.lastc, 1)
-        #setattr(self, 'distill_{}'.format(str(fdrbs)), distill)
-        self.conv = conv_layer (in_channels + self.dc, in_channels, 1)
-        #self.c4_d = conv_layer(self.remaining_channels, 16, 1)
-        #self.c5 = conv_layer(in_channels, in_channels, 1)
-        # self.act = activation('lrelu', neg_slope=0.05)
-        self.esa = CCALayer1(in_channels)  # without conv1, input channels no change
-        #self.distil_1 = CCALayer(in_channels)
-        #self.distil_2 = CCALayer(in_channels)
-        #self.distil_3 = CCALayer(in_channels)
-        #self.mid1 = conv_layer(16, 64, 3)
-        #self.mid2 = conv_layer(16, 64, 3)
-        #self.mid3 = conv_layer(16, 64, 3)
-    def forward(self, input):
-        F_in = input
-        dist1 = self.distill_1(input)
-        mid1 = self.mid_1(dist1)
-        rem1 = input + mid1
-        
-        # dist2 = self.act(self.distill_2(rem1)) # 去掉激活
-        dist2 = self.distill_2(rem1)
-        out = torch.cat([dist1, dist2], dim = 1)
-
-        # out_fused = self.esa(self.conv(out)) # 去掉第二个conv1
-        out_fused = self.esa(out)
         output = F_in + out_fused
         return output
 
@@ -445,30 +363,23 @@ class IRB_add(nn.Module):
         self.lastc = int(self.rc - self.dc)
         self.distill_1 = CCALayer_ksize(self.rc,self.dc, 3)
         self.mid_1 = conv_layer(self.dc, self.rc,3)
-        #self.distills = []
-        #self.mids = []
+
         self.distill_2 = conv_layer(self.rc, self.lastc, 1)
-        #setattr(self, 'distill_{}'.format(str(fdrbs)), distill)
-        self.conv = conv_layer (in_channels, in_channels, 1)
-        #self.c4_d = conv_layer(self.remaining_channels, 16, 1)
-        #self.c5 = conv_layer(in_channels, in_channels, 1)
+
+        self.conv = conv_layer(in_channels, in_channels, 1)
+        
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
-        #self.distil_1 = CCALayer(in_channels)
-        #self.distil_2 = CCALayer(in_channels)
-        #self.distil_3 = CCALayer(in_channels)
-        #self.mid1 = conv_layer(16, 64, 3)
-        #self.mid2 = conv_layer(16, 64, 3)
-        #self.mid3 = conv_layer(16, 64, 3)
+
     def forward(self, input):
         F_in = input
         dist1 = self.distill_1(input)
         mid1 = self.mid_1(dist1)
         rem1 = input + mid1 # add
         
-        # dist2 = self.act(self.distill_2(rem1))
+
         dist2 = self.distill_2(rem1)
-        out = torch.cat([dist1, dist2], dim = 1)
+        out = ops.cat([dist1, dist2], dim = 1)
 
         out_fused = self.esa(self.conv(out))
         output = F_in + out_fused
