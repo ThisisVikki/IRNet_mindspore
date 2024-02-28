@@ -15,7 +15,7 @@ class CCALayer1(nn.Cell):
 
         self.contrast = stdv_channels
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.conv_du = nn.Sequential(
+        self.conv_du = nn.SequentialCell(
             nn.Conv2d(channel, channel // reduction, 1, padding=0, bias=True),
             nn.ReLU(inplace=True),
             nn.Conv2d(channel // reduction, channel, 1, padding=0, bias=True),
@@ -101,7 +101,7 @@ def stdv_channels(inp):
     return F_variance.pow(0.5)
 
 
-class CCALayer(nn.Module):
+class CCALayer(nn.Cell):
     def __init__(self, channel):
         super(CCALayer, self).__init__()
 
@@ -114,7 +114,7 @@ class CCALayer(nn.Module):
 
         return y
 
-class CCALayer_ksize(nn.Module):
+class CCALayer_ksize(nn.Cell):
     def __init__(self, channel_in, channel_out, kernel_size):
         super(CCALayer_ksize, self).__init__()
 
@@ -133,7 +133,7 @@ def pixelshuffle_block(in_channels, out_channels, upscale_factor=2, kernel_size=
     return sequential(conv, pixel_shuffle)
 
 
-class CCALayer_ksizeReLU(nn.Module):
+class CCALayer_ksizeReLU(nn.Cell):
     def __init__(self, channel_in, channel_out, kernel_size):
         super(CCALayer_ksizeReLU, self).__init__()
 
@@ -166,14 +166,14 @@ def sequential(*args):
         return args[0]
     modules = []
     for module in args:
-        if isinstance(module, nn.Sequential):
+        if isinstance(module, nn.SequentialCell):
             for submodule in module.children():
                 modules.append(submodule)
-        elif isinstance(module, nn.Module):
+        elif isinstance(module, nn.Cell):
             modules.append(module)
-    return nn.Sequential(*modules)
+    return nn.SequentialCell(*modules)
 
-class ESA(nn.Module):
+class ESA(nn.Cell):
     """
     attention
     """
@@ -205,7 +205,7 @@ class ESA(nn.Module):
         return x * m
 
 # reduce
-class IRB_minus(nn.Module):
+class IRB_minus(nn.Cell):
     def __init__(self, in_channels):
         super(IRB_minus, self).__init__()
         self.rc = self.remaining_channels = in_channels
@@ -236,7 +236,7 @@ class IRB_minus(nn.Module):
 
 
 # extract F1 after conv  
-class IRB_F1(nn.Module):
+class IRB_F1(nn.Cell):
     def __init__(self, in_channels):
         super(IRB_F1, self).__init__()
         self.rc = self.remaining_channels = in_channels
@@ -247,7 +247,7 @@ class IRB_F1(nn.Module):
 
         self.distill_2 = conv_layer(self.rc, self.lastc, 1)
 
-        self.conv = conv_layer (in_channels+self.dc, in_channels, 1)
+        self.conv = conv_layer(in_channels+self.dc, in_channels, 1)
 
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
@@ -267,7 +267,7 @@ class IRB_F1(nn.Module):
 
 
 # w/o F1
-class IRB_noF1(nn.Module):
+class IRB_noF1(nn.Cell):
     def __init__(self, in_channels):
         super(IRB_noF1, self).__init__()
         self.rc = self.remaining_channels = in_channels
@@ -297,7 +297,7 @@ class IRB_noF1(nn.Module):
 
 
 # w/o conv1
-class IRB_noConv1(nn.Module):
+class IRB_noConv1(nn.Cell):
     def __init__(self, in_channels):
         super(IRB_noConv1, self).__init__()
         self.rc = self.remaining_channels = in_channels
@@ -308,7 +308,7 @@ class IRB_noConv1(nn.Module):
 
         self.distill_2 = conv_layer(self.rc, self.lastc, 1)
 
-        self.conv = conv_layer (in_channels + self.dc, in_channels, 1)
+        self.conv = conv_layer(in_channels + self.dc, in_channels, 1)
 
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
@@ -326,7 +326,7 @@ class IRB_noConv1(nn.Module):
 
 
 # change F1 to F0(Fin)
-class IRB_F0(nn.Module):
+class IRB_F0(nn.Cell):
     def __init__(self, in_channels):
         super(IRB_F0, self).__init__()
         self.rc = self.remaining_channels = in_channels
@@ -355,7 +355,7 @@ class IRB_F0(nn.Module):
         return output
 
 
-class IRB_add(nn.Module):
+class IRB_add(nn.Cell):
     def __init__(self, in_channels):
         super(IRB_add, self).__init__()
         self.rc = self.remaining_channels = in_channels
