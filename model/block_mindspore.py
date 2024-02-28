@@ -16,14 +16,14 @@ class CCALayer1(nn.Cell):
         self.contrast = stdv_channels
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.conv_du = nn.SequentialCell(
-            nn.Conv2d(channel, channel // reduction, 1, padding=0, bias=True),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(channel // reduction, channel, 1, padding=0, bias=True),
+            nn.Conv2d(channel, channel // reduction, 1, padding=0, has_bias=True),
+            nn.ReLU(),
+            nn.Conv2d(channel // reduction, channel, 1, padding=0, has_bias=True),
             nn.Sigmoid()
         )
 
 
-    def forward(self, x):
+    def construct(self, x):
         y = self.contrast(x) + self.avg_pool(x)
         y = self.conv_du(y)
         return x * y
@@ -32,8 +32,8 @@ class CCALayer1(nn.Cell):
 
 def conv_layer(in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1):
     padding = int((kernel_size - 1) / 2) * dilation
-    return nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=padding, bias=True, dilation=dilation,
-                     groups=groups)
+    return nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=padding, pad_mode='pad', has_bias=True, dilation=dilation,
+                     group=groups)
 
 
 def norm(norm_type, nc):
@@ -72,18 +72,18 @@ def conv_block(in_nc, out_nc, kernel_size, stride=1, dilation=1, groups=1, bias=
     p = pad(pad_type, padding) if pad_type and pad_type != 'zero' else None
     padding = padding if pad_type == 'zero' else 0
 
-    c = nn.Conv2d(in_nc, out_nc, kernel_size=kernel_size, stride=stride, padding=padding,
-                  dilation=dilation, bias=bias, groups=groups)
+    c = nn.Conv2d(in_nc, out_nc, kernel_size=kernel_size, stride=stride, padding=padding, pad_mode='pad',
+                  dilation=dilation, has_bias=bias, group=groups)
     a = activation(act_type) if act_type else None
     n = norm(norm_type, out_nc) if norm_type else None
     return sequential(p, c, n, a)
 
 
 def mean_channels(inp):
-    assert inp.shape[0] == 4, 'dim4' # assert(inp.dim() == 4)
+    assert(inp.dim() == 4) # assert(inp.dim() == 4)
     # assert not torch.any(torch.isnan(inp)) 因为可视化把这行去掉了
-    spatial_sum = inp.sum(3, keepdim=True).sum(2, keepdim=True)
-    return spatial_sum / (inp.size(2) * inp.size(3))
+    spatial_sum = inp.sum(3, keepdims=True).sum(2, keepdims=True)
+    return spatial_sum / (inp.shape[2] * inp.shape[3])  # size --> shape
 
 def stdv_channels(inp):
     #assert(inp.dim() == 4)
@@ -93,7 +93,7 @@ def stdv_channels(inp):
     #print(inp)
     #assert not torch.any(torch.isnan(inp-F_mean))
     #assert not torch.any(torch.isnan((inp-F_mean).pow(2)))
-    F_variance =  (inp - F_mean).pow(2).sum(3, keepdim=True).sum(2, keepdim=True) / (inp.size(2) * inp.size(3))
+    F_variance =  (inp - F_mean).pow(2).sum(3, keepdims=True).sum(2, keepdims=True) / (inp.shape[2] * inp.shape[3])
     #print("F_variance:",F_variance)
     #print(torch.count_nonzero(F_variance))
     #print(F_variance.size())
@@ -109,7 +109,7 @@ class CCALayer(nn.Cell):
         self.act = activation('lrelu', neg_slope=0.05)
 
 
-    def forward(self, x):
+    def construct(self, x):
         y = self.act(self.conv3_1(x))
 
         return y
@@ -122,7 +122,7 @@ class CCALayer_ksize(nn.Cell):
         self.act = activation('lrelu', neg_slope=0.05)
 
 
-    def forward(self, x):
+    def construct(self, x):
         y = self.act(self.conv3_1(x))
         return y
 
@@ -141,16 +141,16 @@ class CCALayer_ksizeReLU(nn.Cell):
         self.act = activation('relu')
 
 
-    def forward(self, x):
+    def construct(self, x):
         y = self.act(self.conv3_1(x))
         return y
 
 def activation(act_type, inplace=True, neg_slope=0.05, n_prelu=1):
     act_type = act_type.lower()
     if act_type == 'relu':
-        layer = nn.ReLU(inplace)
+        layer = nn.ReLU()
     elif act_type == 'lrelu':
-        layer = nn.LeakyReLU(neg_slope, inplace)
+        layer = nn.LeakyReLU(neg_slope)
     elif act_type == 'prelu':
         layer = nn.PReLU(num_parameters=n_prelu, init=neg_slope)
     else:
@@ -188,16 +188,16 @@ class ESA(nn.Cell):
         self.conv3_ = conv(f, f, kernel_size=3, padding=1)
         self.conv4 = conv(f, n_feats, kernel_size=1)
         self.sigmoid = nn.Sigmoid()
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU()
 
-    def forward(self, x):
+    def construct(self, x):
         c1_ = (self.conv1(x))
         c1 = self.conv2(c1_)
         v_max = ops.max_pool2d(c1, kernel_size=7, stride=3)
         v_range = self.relu(self.conv_max(v_max))
         c3 = self.relu(self.conv3(v_range))
         c3 = self.conv3_(c3)
-        c3 = ops.interpolate(c3, (x.size(2), x.size(3)), mode='bilinear', align_corners=False) 
+        c3 = ops.interpolate(c3, (x.shape[2], x.shape[3]), mode='bilinear', align_corners=False) 
         cf = self.conv_f(c1_)
         c4 = self.conv4(c3+cf)
         m = self.sigmoid(c4)
@@ -221,14 +221,14 @@ class IRB_minus(nn.Cell):
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
 
-    def forward(self, input):
+    def construct(self, input):
         F_in = input
         dist1 = self.distill_1(input)  # F1
         mid1 = self.mid_1(dist1)  # conv3
         rem1 = input - mid1
         
         dist2 = self.distill_2(rem1)
-        out = ops.cat([dist1, dist2], dim = 1)  # concate
+        out = ops.cat([dist1, dist2], axis = 1)  # concate
 
         out_fused = self.esa(self.conv(out))  # conv1+CCAlayer
         output = F_in + out_fused
@@ -252,14 +252,14 @@ class IRB_F1(nn.Cell):
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
         
-    def forward(self, input):
+    def construct(self, input):
         F_in = input
         dist1 = self.distill_1(input)  # conv3+leaky relu
         mid1 = self.mid_1(dist1)
         rem1 = input + mid1  # add
         
         dist2 = self.distill_2(rem1)  # conv1
-        out = ops.cat([mid1, dist2], dim = 1)
+        out = ops.cat([mid1, dist2], axis = 1)
 
         out_fused = self.esa(self.conv(out))
         output = F_in + out_fused
@@ -283,7 +283,7 @@ class IRB_noF1(nn.Cell):
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
         
-    def forward(self, input):
+    def construct(self, input):
         F_in = input
         dist1 = self.distill_1(input)  # conv3+leaky relu
         mid1 = self.mid_1(dist1)  # conv3
@@ -312,13 +312,14 @@ class IRB_noConv1(nn.Cell):
 
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
-    def forward(self, input):
+        
+    def construct(self, input):
         F_in = input
         dist1 = self.distill_1(input)
         mid1 = self.mid_1(dist1)
         rem1 = input + mid1
         
-        out = ops.cat([dist1, rem1], dim = 1)
+        out = ops.cat([dist1, rem1], axis = 1)
 
         out_fused = self.esa(self.conv(out))
         output = F_in + out_fused
@@ -341,14 +342,15 @@ class IRB_F0(nn.Cell):
 
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
-    def forward(self, input):
+        
+    def construct(self, input):
         F_in = input
         dist1 = self.distill_1(input)  # conv3+leaky relu
         mid1 = self.mid_1(dist1)
         rem1 = input + mid1  # add
         
         dist2 = self.distill_2(rem1)  # conv1
-        out = ops.cat([input, dist2], dim = 1)  # F1 to F0
+        out = ops.cat([input, dist2], axis = 1)  # F1 to F0
 
         out_fused = self.esa(self.conv(out))
         output = F_in + out_fused
@@ -371,7 +373,7 @@ class IRB_add(nn.Cell):
         self.act = activation('lrelu', neg_slope=0.05)
         self.esa = CCALayer1(in_channels)
 
-    def forward(self, input):
+    def construct(self, input):
         F_in = input
         dist1 = self.distill_1(input)
         mid1 = self.mid_1(dist1)
@@ -379,7 +381,7 @@ class IRB_add(nn.Cell):
         
 
         dist2 = self.distill_2(rem1)
-        out = ops.cat([dist1, dist2], dim = 1)
+        out = ops.cat([dist1, dist2], axis = 1)
 
         out_fused = self.esa(self.conv(out))
         output = F_in + out_fused

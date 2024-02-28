@@ -1,5 +1,5 @@
 # import torch.nn as nn
-from . import block as B
+from . import block_mindspore as B
 from mindspore import nn
 from mindspore import ops
 # import torch
@@ -32,7 +32,7 @@ class SRITM_IRNet_5(nn.Cell):
         self.upsampler2 = B.pixelshuffle_block(nf, out_nc, upscale_factor=2)
 
 
-    def forward(self, input):
+    def construct(self, input):
         out_fea = self.fea_conv(input)
         out_B1 = self.IRB1(out_fea)
         out_B2 = self.IRB2(out_B1)
@@ -40,7 +40,7 @@ class SRITM_IRNet_5(nn.Cell):
         out_B4 = self.IRB4(out_B3)
         out_B5 = self.IRB5(out_B4)
         
-        out_B = self.c(ops.cat([out_B1, out_B2, out_B3, out_B4, out_B5], dim=1))
+        out_B = self.c(ops.cat([out_B1, out_B2, out_B3, out_B4, out_B5], axis=1))
         out_lr = self.LR_conv(out_B) + out_fea
         output = self.conv3_layer(out_lr)
         
