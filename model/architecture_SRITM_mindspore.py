@@ -1,11 +1,13 @@
-import torch.nn as nn
+# import torch.nn as nn
 from . import block as B
-import torch
+from mindspore import nn
+from mindspore import ops
+# import torch
 import logging
 import numpy as np
 
 
-class SRITM_IRNet_5(nn.Module):
+class SRITM_IRNet_5(nn.Cell):
     def __init__(self, in_nc=3, nf=64, num_modules=5, out_nc=3, upscale=4):
         super(SRITM_IRNet_5, self).__init__()
 
@@ -38,7 +40,7 @@ class SRITM_IRNet_5(nn.Module):
         out_B4 = self.IRB4(out_B3)
         out_B5 = self.IRB5(out_B4)
         
-        out_B = self.c(torch.cat([out_B1, out_B2, out_B3, out_B4, out_B5], dim=1))
+        out_B = self.c(ops.cat([out_B1, out_B2, out_B3, out_B4, out_B5], dim=1))
         out_lr = self.LR_conv(out_B) + out_fea
         output = self.conv3_layer(out_lr)
         
