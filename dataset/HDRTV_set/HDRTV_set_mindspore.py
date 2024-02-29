@@ -1,17 +1,14 @@
 import random
 import numpy as np
 import cv2
-import torch
-import torch.utils.data as data
 import time
 import os
 import sys
-import lpips
 sys.path.insert(0, os.path.dirname(__file__))
 import HDRTV_utils_mindspore as util
 import skimage.metrics as sm
 
-class Dataset(data.Dataset):
+class Dataset():
     def __init__(self,args=None, dataset_train=None, cfg=None):
         self.args = args
         self.cfg = cfg
@@ -50,18 +47,20 @@ class Dataset(data.Dataset):
             img_GT = cv2.cvtColor((cv2.imread(GT_path,cv2.IMREAD_UNCHANGED) / 65535).astype(np.float32), cv2.COLOR_BGR2YCrCb)
             img_LQ = cv2.cvtColor((cv2.imread(LQ_path,cv2.IMREAD_UNCHANGED) / 255).astype(np.float32), cv2.COLOR_BGR2YCrCb)
         
-        img_GT = torch.from_numpy(np.ascontiguousarray(np.transpose(img_GT, (2, 0, 1)))).float().clamp(min=0, max=1)
-        img_LQ = torch.from_numpy(np.ascontiguousarray(np.transpose(img_LQ , (2, 0, 1)))).float().clamp(min=0, max=1)
+        # 省略了torch.from_numpy(t).float().clamp(min=0, max=1)
+        img_GT = np.ascontiguousarray(np.transpose(img_GT, (2, 0, 1)))
+        img_LQ = np.ascontiguousarray(np.transpose(img_LQ , (2, 0, 1)))
         
         return img_LQ, img_GT
 
     def __len__(self):
         return len(self.gt_files)
     
-    def __measure__(self, output, gt,metrics):
+    def __measure__(self, output, gt, metrics):
         # 四维的矩阵，0维表示图片的数量，这里是归一化后的
-        outputBatch_yuvNumpy_bhwc = output.detach().cpu().numpy().transpose(0, 2, 3, 1).clip(0, 1)
-        gtBatch_yuvNumpy_bhwc = gt.detach().cpu().numpy().transpose(0, 2, 3, 1).clip(0, 1)
+        # 这里直接假设输入的是ndarray，省略 detach().cpu().numpy() 步骤
+        outputBatch_yuvNumpy_bhwc = output.transpose(0, 2, 3, 1).clip(0, 1)
+        gtBatch_yuvNumpy_bhwc = gt.transpose(0, 2, 3, 1).clip(0, 1)
         
         start_tme = time.time()
 
