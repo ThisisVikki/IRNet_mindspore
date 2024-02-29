@@ -14,8 +14,6 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
-from tensorboardX import SummaryWriter
-
 
 # args
 parser = argparse.ArgumentParser()
@@ -42,7 +40,6 @@ else:
 log_path = dir_path+ args.dataset+"_"+args.model+"_"+str(args.shuffle)+"_tb_logs/"
 if not os.path.exists(log_path):
     os.mkdir(log_path)
-writer = SummaryWriter(log_dir=log_path,flush_secs=300)
 
 
 # cfg
@@ -65,10 +62,9 @@ torch.backends.cudnn.deterministic = True
 train_set = Datasets(args=args,train=True,cfg=cfg)
 valid_set = Datasets(args=args,train=False,cfg=cfg)
 
-
+# 从下面开始改
 
 # dataloader
-
 train_dataloader = DataLoader(train_set,sampler=None,batch_size=cfg.TRAIN_BATCH_SIZE,shuffle=True,num_workers=2)
 
 valid_dataloader = DataLoader(valid_set,sampler=None,batch_size=1,shuffle=False,num_workers=2)
@@ -120,7 +116,6 @@ for epoch_index in range(epoch_base,cfg.MAX_EPOCH):
         optimizer.zero_grad()  # 将所有参数的梯度都置零
         loss.backward()        # 误差反向传播计算参数梯度
         optimizer.step()
-        writer.add_scalar("train_loss", loss, (epoch_index*len(train_dataloader)+batch_index+1))
         
     torch.save(model,epoch_save_path)
 
@@ -148,7 +143,7 @@ for epoch_index in range(epoch_base,cfg.MAX_EPOCH):
             output = model(data)
             
             # psnr ssim 字典 key为列表
-            metrics = valid_set.__measure__(output=output, gt=gt,metrics=metrics)
+            metrics = valid_set.__measure__(output=output, gt=gt,metrics=metrics)  # 感觉这里要先把gt和output换成np
         mean_psnr = sum(metrics['psnr'])/len(metrics['psnr'])
         mean_ssim = sum(metrics['ssim'])/len(metrics['ssim'])
         
@@ -164,8 +159,6 @@ for epoch_index in range(epoch_base,cfg.MAX_EPOCH):
             mt_max = pd.DataFrame({"psnr_max":[mean_psnr_max],"ssim_max":[mean_ssim_max]})
             mt_max.to_csv(dir_path+ args.dataset+"_"+args.model+"_"+str(args.shuffle)+'_metrics_max',index=False,sep=",")
         
-        writer.add_scalar("psnr", mean_psnr, (epoch_index+1))
-        writer.add_scalar("ssim", mean_ssim, (epoch_index+1))
     print("num epoch:"+str(epoch_index))
 
 
