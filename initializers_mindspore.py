@@ -1,11 +1,12 @@
-import torch.nn as nn
-import torch
-
-initializer = ''
+initial = ''
 
 import math
 import numpy as np
-from mindspore.common.initializer import Initializer, Normal
+from mindspore.common.initializer import Initializer, initializer, Normal
+
+'''
+不知道要不要换成cell的初始化
+'''
 
 
 def _calculate_fan_in_and_fan_out(arr):
@@ -45,11 +46,11 @@ class XavierNormal(Initializer):
 
 
 def choose_initializer(cfg):
-    global initializer
+    global initial
     try:
-        initializer = cfg.INITIALIZER.NAME
+        initial = cfg.INITIALIZER.NAME
     except AttributeError:
-        initializer = 'Normal'
+        initial = 'Normal'
 
 def init_weight(net):
     '''
@@ -58,11 +59,13 @@ def init_weight(net):
     for name, param in net.parameters_and_names():
         if 'weight' in name:
             try:
-                if initializer == 'Normal':
+                if initial == 'Normal':
                     param.set_data(initializer(Normal(sigma=1e-11), param.shape, param.dtype))
-                elif initializer == 'Xavier Normal':
+                elif initial == 'Xavier Normal':
                     param.set_data(initializer(XavierNormal(), param.shape, param.dtype))
             except AttributeError:
                 param.set_data(initializer(Normal(sigma=1e-11), param.shape, param.dtype))
         if 'bias' in name:
             param.set_data(initializer('zeros', param.shape, param.dtype))
+    
+    return net

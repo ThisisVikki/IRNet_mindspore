@@ -1,8 +1,6 @@
 import os
 import cv2
 import numpy as np
-import torch.nn as nn
-import torch
 
 
 def get_img_path(folder_path="/home/ubuntu/"):
