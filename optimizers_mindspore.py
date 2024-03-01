@@ -1,4 +1,4 @@
-import torch
+import mindspore.nn as nn
 
 def Optimizer(model,args,cfg=None):
     try:
@@ -8,8 +8,8 @@ def Optimizer(model,args,cfg=None):
     
     try:
         if args.model == 'IRNet-2' or 'IRNet-1-48' or 'SRITM-IRNet-5':
-            optimizer = torch.optim.Adam(model.parameters(), lr=cfg.OPTIMIZER.LEARNING_RATE)
+            optimizer = nn.Adam(model.trainable_params(), learning_rate=cfg.OPTIMIZER.LEARNING_RATE)
             
     except AttributeError:
-        optimizer = torch.optim.Adam(model.parameters(), lr=cfg.OPTIMIZER.LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+        optimizer = nn.Adam(model.parameters(), learning_rate=cfg.OPTIMIZER.LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     return optimizer
