@@ -48,8 +48,8 @@ class Dataset():
             img_LQ = cv2.cvtColor((cv2.imread(LQ_path,cv2.IMREAD_UNCHANGED) / 255).astype(np.float32), cv2.COLOR_BGR2YCrCb)
         
         # 省略了torch.from_numpy(t).float().clamp(min=0, max=1)
-        img_GT = np.ascontiguousarray(np.transpose(img_GT, (2, 0, 1)))
-        img_LQ = np.ascontiguousarray(np.transpose(img_LQ , (2, 0, 1)))
+        img_GT = np.ascontiguousarray(np.transpose(img_GT, (2, 0, 1))).clip(0, 1)
+        img_LQ = np.ascontiguousarray(np.transpose(img_LQ , (2, 0, 1))).clip(0, 1)
         
         return img_LQ, img_GT
 
