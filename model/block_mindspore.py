@@ -150,7 +150,7 @@ def activation(act_type, inplace=True, neg_slope=0.05, n_prelu=1):
     if act_type == 'relu':
         layer = nn.ReLU()
     elif act_type == 'lrelu':
-        layer = nn.LeakyReLU(neg_slope)
+        layer = nn.LeakyReLU(alpha=neg_slope)
     elif act_type == 'prelu':
         layer = nn.PReLU(num_parameters=n_prelu, init=neg_slope)
     else:
