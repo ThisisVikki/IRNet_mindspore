@@ -1,15 +1,16 @@
 import argparse
+import mindspore
+from mindspore.train import Model
 import os
-import torch
 import cv2
 import numpy as np
 import argparse
-from model.architecture import IRNet_1, IRNet_2
-from model.architecture_SRITM import SRITM_IRNet_5
+from model.architecture_mindspore import IRNet_1, IRNet_2
+from model.architecture_SRITM_mindspore import SRITM_IRNet_5
 
 
 def traverse_under_folder(folder_root):
-	folder_leaf = []
+	folder_leaf = [] 
 	folder_branch = []
 	file_leaf = []
 	
@@ -27,15 +28,20 @@ def traverse_under_folder(folder_root):
 
 	return folder_leaf, folder_branch, file_leaf
 
-testdata_path = './HDRTV_test/test_sdr/'
+testdata_path = '/home/csjunxu-3090/syb/HDRTV_test/test_sdr/'
 _,_,fil = traverse_under_folder(testdata_path)
 fil.sort()
 
+mindspore.set_context(device_target='GPU')
+mindspore.set_context(device_id=1)
 
-model_path = "./pretrained_models/SRITM_IRNet-2_True.pth"
 model = IRNet_2(upscale=4)
-model.load_state_dict(torch.load(model_path,map_location=torch.device('cpu')))
-model = model.eval()
+
+
+param_dict = mindspore.load_checkpoint("/new/xlq/IRNet_mindspore/best.ckpt")
+param_not_load, _ = mindspore.load_param_into_net(model, param_dict)
+model.set_train(False)
+model = Model(model)
 
 
 for i in range(len(fil)):
@@ -43,19 +49,16 @@ for i in range(len(fil)):
     img_path = fil[i]
         
     img = cv2.cvtColor((cv2.imread(img_path,cv2.IMREAD_UNCHANGED) / 255).astype(np.float32), cv2.COLOR_BGR2YCrCb)
-    img = torch.from_numpy(np.transpose(img, (2, 0, 1))).float().clamp(min=0, max=1)
+    img = mindspore.Tensor.from_numpy(np.transpose(img, (2, 0, 1))).float().clamp(min=0, max=1)
+    img = mindspore.Tensor.unsqueeze(img,0)
 
-    data = torch.tensor(img)
-    data = torch.unsqueeze(data,0).cpu()
-
-    with torch.no_grad():
-        img = model(data)
-    #img = model(data)
+    
+    img = model.predict(img)
 
 
 
-    img = torch.squeeze(img,0).clamp(min=0, max=1)
-    img = img.detach().numpy()
+    img = mindspore.Tensor.squeeze(img,0).clamp(min=0, max=1)
+    img = img.asnumpy()
 
 
     img = np.transpose(img,(1,2,0))
@@ -67,5 +70,5 @@ for i in range(len(fil)):
 
 
 
-    cv2.imwrite("./results/"+str(i+1).rjust(3,'0')+".png", img)
+    cv2.imwrite("./IRNet-2/results/"+str(i+1).rjust(3,'0')+".png", img)
     print(i)
