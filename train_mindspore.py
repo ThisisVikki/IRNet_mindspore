@@ -1,18 +1,18 @@
-import torch
+import mindspore
+from mindspore.dataset import GeneratorDataset
+from initial_environment_mindspore import init_env
+from mindspore.amp import all_finite
 import numpy as np
-from models import *
-from datasets import *
+from models_mindspore import *
+from datasets_mindspore import *
 import argparse
-from torch.utils.data import DataLoader
 import pandas as pd
 from yacs.config import CfgNode as CN
 from configs import *
-from initializers import *
-from optimizers import *
-from schedulers import *
+from initializers_mindspore import *
+from optimizers_mindspore import *
+from schedulers_mindspore import *
 import os
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 
 # args
@@ -25,6 +25,7 @@ parser.add_argument('--pretrain_path',type=str,default=None)
 parser.add_argument('--channels',type=int,default=64)
 parser.add_argument('--last_max_psnr',type=float,default=0)
 parser.add_argument('--last_max_ssim',type=float,default=0)
+parser.add_argument('--run_eval',type=str,default=True)
 args = parser.parse_args()
 
 
@@ -36,26 +37,19 @@ if args.model == 'IRNet-2':
 else:
     raise NotImplementedError("not available")
 
-# SummaryWriter
-log_path = dir_path+ args.dataset+"_"+args.model+"_"+str(args.shuffle)+"_tb_logs/"
-if not os.path.exists(log_path):
-    os.mkdir(log_path)
-
 
 # cfg
 cfg_path = config_path(args=args)
 cfg = CN.load_cfg(open(cfg_path))
+
+init_env(cfg)
 cfg.freeze()
-
-
 
 # random seed
 np.random.seed(0)
-torch.manual_seed(0)
-torch.cuda.manual_seed(0)
-torch.cuda.manual_seed_all(0)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
+mindspore.set_seed(0)
+# torch.backends.cudnn.benchmark = False
+# torch.backends.cudnn.deterministic = True
 
 
 # dataset
@@ -65,22 +59,20 @@ valid_set = Datasets(args=args,train=False,cfg=cfg)
 # 从下面开始改
 
 # dataloader
-train_dataloader = DataLoader(train_set,sampler=None,batch_size=cfg.TRAIN_BATCH_SIZE,shuffle=True,num_workers=2)
+train_dataloader = GeneratorDataset(train_set,column_names=['lq', 'gt'],sampler=None,shuffle=True,num_parallel_workers=2)
+train_dataloader = train_dataloader.batch(batch_size=cfg.TRAIN_BATCH_SIZE)  # num_parallel_workers 不知道要不要加
 
-valid_dataloader = DataLoader(valid_set,sampler=None,batch_size=1,shuffle=False,num_workers=2)
+valid_dataloader = GeneratorDataset(valid_set,column_names=['lq', 'gt'],sampler=None,shuffle=False,num_parallel_workers=2)
+valid_dataloader = valid_dataloader.batch(batch_size=1)
 
 
 # 初始化模型
-model = Net(args,cfg=cfg).cuda()
+model = Net(args,cfg=cfg)
 print(model)
 choose_initializer(cfg=cfg) 
-model.apply(init_weight)
-if args.pretrain_path is not None:
-    model = torch.load(args.pretrain_path).cuda()
-
-#test_model = Net(args,cfg=cfg)
-choose_initializer(cfg=cfg)
-#test_model.apply(init_weight)
+model = init_weight(model)
+# if args.pretrain_path is not None:
+#     model = torch.load(args.pretrain_path).cuda()
 
 # optimizer
 optimizer = Optimizer(model=model,args=args,cfg=cfg)
@@ -88,80 +80,78 @@ optimizer = Optimizer(model=model,args=args,cfg=cfg)
 #scheduler
 scheduler = Scheduler(optimizer=optimizer,args=args,cfg=cfg)
 
+epoch_base = args.epoch_base
 
-mean_psnr_max = args.last_max_psnr
-mean_ssim_max = args.last_max_ssim
+mean_psnr_max = 0.0
+mean_ssim_max = 0.0
 print("mean_psnr_max:%.4f, mean_ssim_max:%.4f" %(mean_psnr_max,mean_ssim_max))
 metrics_csv = {}
 metrics_csv["psnr"] = []
 metrics_csv["ssim"] = []
 
-epoch_base = args.epoch_base
 # train valid 
-for epoch_index in range(epoch_base,cfg.MAX_EPOCH):
-    epoch_save_path = "./"+epoch_pre+'/'+ str(epoch_index)+'_'+args.dataset+"_"+args.model+"_"+str(args.shuffle)+".pt"
-    print("epoch:%d" % epoch_index)
-    # train
-    model.train()
-    torch.cuda.empty_cache()
-    for batch_index, dataset_pakage in enumerate(train_dataloader):
-        data = dataset_pakage[0]
-        gt = dataset_pakage[1]
-        data = data.cuda(non_blocking=True)
-        gt = gt.cuda(non_blocking=True)
-        
-        output = model(data)
-        loss = torch.nn.functional.l1_loss(output, gt)
-        #print(loss)
-        optimizer.zero_grad()  # 将所有参数的梯度都置零
-        loss.backward()        # 误差反向传播计算参数梯度
-        optimizer.step()
-        
-    torch.save(model,epoch_save_path)
+train_dataloader = train_dataloader.create_dict_iterator()
+valid_dataloader = valid_dataloader.create_dict_iterator()
+model.set_train(True)
 
-    cur_lr=optimizer.param_groups[-1]['lr']
-    print("The learning rate is:",cur_lr)
+def forward_fn(input, gt):
+    output = model(input)
+    loss = mindspore.ops.l1_loss(output, gt)
+    return loss
 
-    scheduler.step()
-    if epoch_index % 10 ==0:
-        epoch_save_optim = "./"+epoch_pre + "/" + "optim_" + str(epoch_index)
-        torch.save(optimizer, epoch_save_optim)    
-    # valid
-    model.eval()
-    #test_model = torch.load(epoch_save_path,map_location='cpu')
-    with torch.no_grad():
+grad_fn = mindspore.value_and_grad(forward_fn, None, optimizer.parameters)
+
+def train_step(input, gt):
+    loss, grads = grad_fn(input, gt)
+    optimizer(grads)
+    return loss
+
+for epoch in range(epoch_base,cfg.MAX_EPOCH):
+    # 训练一个epoch
+    for batch, data in enumerate(train_dataloader):
+        loss = train_step(data['lq'], data['gt']).asnumpy()
+        
+        print(f"epoch: [{epoch}], batch: [{batch}], "
+                f"loss: {loss}", flush=True)
+    
+    if epoch % 10 ==0:
+        epoch_save_path = "./"+epoch_pre +'/' + str(epoch)+'_'+args.model+".ckpt"
+        mindspore.save_checkpoint(model, epoch_save_path)
+    
+    # param_dict = mindspore.load_checkpoint("/new/xlq/IRNet_mindspore/IRNet-2/0_IRNet-2.ckpt")
+    # param_not_load, _ = mindspore.load_param_into_net(model, param_dict)
+    
+    
+    # 推理并保存最好的那个checkpoint
+    if args.run_eval:
+        # mindspore.set_context(device_target='CPU')
+        model.set_train(False)
+
         metrics = {}
         metrics['psnr'] = []
         metrics['ssim'] = []
         
-        torch.cuda.empty_cache()
-        for valid_index, dataset_package in enumerate(valid_dataloader):
-            data = dataset_package[0]
-            gt = dataset_package[1]
-            data = data.cuda(non_blocking=True)
-            gt = gt.cuda(non_blocking=True)
-            output = model(data)
+        for batch, data in enumerate(valid_dataloader):
+            output = model(data["lq"]).asnumpy()
+            gt = data["gt"].asnumpy()
             
-            # psnr ssim 字典 key为列表
             metrics = valid_set.__measure__(output=output, gt=gt,metrics=metrics)  # 感觉这里要先把gt和output换成np
+            
         mean_psnr = sum(metrics['psnr'])/len(metrics['psnr'])
         mean_ssim = sum(metrics['ssim'])/len(metrics['ssim'])
-        
-        print("psnr:"+str(mean_psnr)+" , ssim:"+str(mean_ssim))
-        metrics_csv["psnr"].append(mean_psnr)
-        metrics_csv["ssim"].append(mean_ssim)
-                
+            
+        print(f"epoch {epoch}, psnr: {mean_psnr}, ssim: {mean_ssim}", flush=True)
+            
         if (mean_psnr >= mean_psnr_max) & (mean_ssim >= mean_ssim_max):
             mean_psnr_max = mean_psnr
             mean_ssim_max = mean_ssim
-            torch.save(model,save_path)
+
+            mindspore.save_checkpoint(model, "best.ckpt")
             
             mt_max = pd.DataFrame({"psnr_max":[mean_psnr_max],"ssim_max":[mean_ssim_max]})
             mt_max.to_csv(dir_path+ args.dataset+"_"+args.model+"_"+str(args.shuffle)+'_metrics_max',index=False,sep=",")
+            
+            print(f"Updata best psnr: {mean_psnr}, ssim: {mean_ssim}")
         
-    print("num epoch:"+str(epoch_index))
-
-
-dataframe = pd.DataFrame(metrics_csv)
-dataframe.to_csv(dir_path+args.dataset+"_"+args.model+"_"+str(args.shuffle)+"_metrics.csv",index=False,sep=",")
-print("successful!")    
+        # mindspore.set_context(device_target='GPU')
+        model.set_train(True)
