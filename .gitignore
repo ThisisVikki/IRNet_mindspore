@@ -1,0 +1,7 @@
+figure/
+IRNet-2/
+results/
+best.ckpt
+crop_256.py
+IRNet-2_mindspore.txt
+IRNet-2_pytorch.txt
