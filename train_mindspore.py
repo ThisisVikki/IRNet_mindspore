@@ -117,6 +117,9 @@ for epoch in range(epoch_base,cfg.MAX_EPOCH):
     if epoch % 10 ==0:
         epoch_save_path = "./"+epoch_pre +'/' + str(epoch)+'_'+args.model+".ckpt"
         mindspore.save_checkpoint(model, epoch_save_path)
+    elif epoch == cfg.MAX_EPOCH - 1:
+        epoch_save_path = "./"+epoch_pre +'/' + str(epoch)+'_'+args.model+".ckpt"
+        mindspore.save_checkpoint(model, epoch_save_path)
     
     # param_dict = mindspore.load_checkpoint("/new/xlq/IRNet_mindspore/IRNet-2/0_IRNet-2.ckpt")
     # param_not_load, _ = mindspore.load_param_into_net(model, param_dict)

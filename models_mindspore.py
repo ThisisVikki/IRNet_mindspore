@@ -8,7 +8,7 @@ from model.architecture_SRITM_mindspore import SRITM_IRNet_5
 def Net(args, cfg=None):
     if args.model=="IRNet-2":
         model = IRNet_2(upscale=4)
-    elif args.model == '"IRNet-1-48"':
+    elif args.model == "IRNet-1-48":
         model = IRNet_1(upscale=4, nf=48)
     elif args.model == 'SRITM-IRNet-5':
         model = SRITM_IRNet_5(upscale=4)
