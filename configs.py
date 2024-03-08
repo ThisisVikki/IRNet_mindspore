@@ -11,7 +11,7 @@ def config_path(args):
     elif args.model == "IRNet-1-48":
         path = "./experiments/IRNet_COSINE_mindspore.yaml"
     elif args.model == "SRITM-IRNet-5":
-        path = "./experiments/IRNet_COSINE_mindspore.yaml"
+        path = "./experiments/IRNet_COSINE_SRITM_mindspore.yaml"
     else:
         path = None
     
