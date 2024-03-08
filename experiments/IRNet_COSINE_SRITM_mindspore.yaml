@@ -14,7 +14,7 @@ SRITM:
   DIVIDE_VALID: False
   TRAIN_DATAROOT_GT: '/home/csjunxu-3090/syb/downsampleFactor_04/hr/10bit'
   TRAIN_DATAROOT_LQ: '/new/xlq/dataset_downsample_x4_train/'
-  VALID_DATAROOT_GT: '/new/xlq/HDRTV_test_1024/test_hdr/'
+  VALID_DATAROOT_GT: '/home/csjunxu-3090/syb/HDRTV_test/test_hdr/'
   VALID_DATAROOT_LQ: '/home/csjunxu-3090/xlq/dataset_downsample_x4/valid/' 
 MAX_EPOCH: 200
 OPTIMIZER:
