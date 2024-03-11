@@ -8,10 +8,10 @@ PY_FILE: dataset/HDRTV_set/HDRTV_set.py
 NUM_WORKERS: 2
 SRITM:
   DIVIDE_VALID: False
-  TRAIN_DATAROOT_GT: './downsampleFactor_04/hr/10bit'
-  TRAIN_DATAROOT_LQ: './downsampleFactor_04/hr/08bit'
-  VALID_DATAROOT_GT: './HDRTV_test/test_hdr/'
-  VALID_DATAROOT_LQ: './HDRTV_test/test_sdr/' 
+  TRAIN_DATAROOT_GT: '/home/csjunxu-3090/syb/downsampleFactor_04/hr/10bit'
+  TRAIN_DATAROOT_LQ: '/home/csjunxu-3090/syb/downsampleFactor_04/hr/08bit'
+  VALID_DATAROOT_GT: '/new/xlq/HDRTV_test_1024/test_hdr/'
+  VALID_DATAROOT_LQ: '/new/xlq/HDRTV_test_1024/test_sdr/' 
 MAX_EPOCH: 200
 OPTIMIZER:
   LEARNING_RATE: !!float 5e-4 
