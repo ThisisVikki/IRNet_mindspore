@@ -1,4 +1,3 @@
-figure/
 IRNet-2/
 results/
 best.ckpt
@@ -11,3 +10,4 @@ IRNet-2-torch/
 SRITM-IRNet-5/
 IRNet-1-48-torch/
 IRNet-2-torch-re/
+SRITM-IRNet-5-torch/
